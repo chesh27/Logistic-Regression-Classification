@@ -1,0 +1,450 @@
+---
+title: "Modern Data Mining - HW 3"
+author: "Cheshta Dhingra"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.height=5, fig.width=11, warning = F)
+
+# constants for homework assignments
+hw_num <- 3
+hw_due_date <- "25 March, 2017"
+```
+## Problem 1
+We will continue to use the Framingham Data (`Framingham.dat`) so that you are already familiar with the data and the variables. All the results are obtained through training data.
+
+To keep our answers consistent, use a subset of the data, and exclude anyone with a missing entry. For your convenience, we've loaded it here together with a brief summary about the data.
+
+```{r data preparation, include = F}
+# Notice that we hide the code and the results here
+# Using `include=F` in the chunk declaration
+hd_data <- read.csv("Framingham.dat")
+str(hd_data) 
+
+### Renames, setting the variables with correct natures...
+names(hd_data)[1] <- "HD"
+hd_data$HD <- as.factor(hd_data$HD)
+hd_data$SEX <- as.factor(hd_data$SEX)
+str(hd_data)
+#tail(hd_data, 1)    # The last row is for prediction
+hd_data.new <- hd_data[1407,] # The female whose HD will be predicted.
+hd_data <- hd_data[-1407,]  # take out the last row 
+hd_data.f <- na.omit(hd_data)
+```
+
+We note that this dataset contains 311 people diagnosed without heart disease and 1095 with heart disease.
+```{r table heart disease, echo = F, comment = " "}
+# we use echo = F to avoid showing this R code
+table(hd_data$HD) # HD: 311 of "0" and 1095 "1" 
+```
+
+After a quick cleaning up here is a summary about the data:
+```{r data summary, comment="     "}
+# using the comment="     ", we get rid of the ## in the output.
+summary(hd_data.f)
+```
+
+### Part 1A
+Goal: Identify important risk factors for `Heart.Disease.` through logistic regression. 
+Start a fit with just one factor, `SBP`, and call it `fit1`. Let us add one variable to this at a time from among the rest of the variables. 
+```{r, results='hide'}
+fit1 <- glm(HD~SBP, hd_data.f, family=binomial)
+summary(fit1)
+fit1.1 <- glm(HD~SBP + AGE, hd_data.f, family=binomial)
+summary(fit1.1)
+fit1.2 <- glm(HD~SBP + SEX, hd_data.f, family=binomial)
+summary(fit1.2)
+fit1.3 <- glm(HD~SBP + DBP, hd_data.f, family=binomial)
+summary(fit1.3)
+fit1.4 <- glm(HD~SBP + CHOL, hd_data.f, family=binomial)
+summary(fit1.4)
+fit1.5 <- glm(HD~SBP + DBP, hd_data.f, family=binomial)
+summary(fit1.5)
+fit1.6 <- glm(HD~SBP + FRW, hd_data.f, family=binomial)
+summary(fit1.6)
+fit1.7 <- glm(HD~SBP + CIG, hd_data.f, family=binomial)
+summary(fit1.7)
+```
+i. Which single variable would be the most important to add? Add it to your model, and call the new fit `fit2`.  
+
+We will pick up the variable either with highest $|z|$ value, or smallest $p$ value. From all the two variable models we see that `SEX` will be the most important addition on top of the SBP. And here is the summary report.
+```{r the most important addition, results='asis', comment="   "}
+## How to control the summary(fit2) output to cut some junk?
+## We could use packages: xtable or broom. 
+library(xtable)
+options(xtable.comment = FALSE)
+fit2 <- glm(HD~SBP + SEX, hd_data.f, family=binomial)
+xtable(fit2)
+```
+ii. Is the residual deviance of `fit2` always smaller than that of `fit1`? Why or why not?
+  
+Yes. The larger model (fit2) does a better job of predicting our Y variable than fit1 does, so the residual deviance must be lower. A lower deviance always indicates a better fit. 
+  
+iii. Perform both the Wald test and the Likelihood ratio tests (Chi-Squared) to see if the added variable is significant at the .01 level.  What are the p-values from each test? Are they the same? 
+```{r, echo = F}
+#Wald test 
+summary(fit2)
+confint(fit2,level = .99)   
+
+#Likelihood ratio test 
+chi.sq <- 1469.3-1373.8     # get the Chi-square stat
+pchisq(chi.sq, 1, lower.tail=FALSE)  # p-value: from the likelihood Ratio test
+#or
+anova(fit2, test="Chisq")
+```
+p-value from Wald test  = ? 
+
+p-value from Chi-sq test = 1.478913e-22
+
+### Part 1B
+
+Model building: Start with all variables. Our goal is to fit a well-fitting model, that is still small and easy to interpret (parsimonious).
+
+i. Use backward selection method. Only keep variables whose coefficients are significantly different from 0 at .05 level. Kick out the variable with the largest p-value first, and then re-fit the model to see if there are other variables you want to kick out.
+```{r, include = F}
+fit3 <- glm(HD~., hd_data.f, family=binomial)   # with all the predictors
+summary(fit3)
+fit3.1 <- update(fit3, .~. -DBP)
+# Backward selection by kicking DBP (the one with largest p-value) out
+summary(fit3.1)
+fit3.2 <- update(fit3.1, .~. -FRW)
+summary(fit3.2)
+fit3.3 <- update(fit3.2, .~. -CIG)
+```
+After kicking out DBP, FRW and CIG, we get: 
+
+```{r, echo = F}
+summary(fit3.3) 
+```
+
+ii. Use AIC as the criterion for model selection. Find a model with small AIC through exhaustive search. Does exhaustive search  guarantee that the p-values for all the remaining variables are less than .05? Is our final model here the same as the model from backwards elimination? 
+```{r, include = F}
+require(bestglm)
+fit3 <- glm(HD~., hd_data.f, family=binomial)   # with all the predictors
+summary(fit3)
+Xy <- model.matrix(HD ~.+0, hd_data.f) # get the design matrix without 1's and HD.
+Xy <- data.frame(Xy, hd_data.f$HD)   # attach y as the last column.
+str(Xy)
+
+fit.all <- bestglm(Xy, family = binomial, method = "exhaustive", IC="AIC", nvmax = 10)
+names(fit.all)
+fit.all$BestModels
+```
+
+```{r, echo = F}
+summary(fit.all$BestModel)
+```
+No, the final model here is different. Using BIC we included Age, Sexmale, SBP and Chol. Using AIC we include Age, Sexmale, SBP, Chol, FRW, CIG. We get a lower AIC from the second model. 
+
+iii. Use the model chosen from part ii. as the final model. Write a brief summary to describe important factors relating to Heart Diseases (i.e. the relationships between those variables in the model and heart disease). Give a definition of “important factors”. 
+
+Final model: HD ~ AGE + SEXMALE + SBP + CHOL + FRW + CIG. Using the estimates for the coefficients on these variables, we see that all of them are associated with an increased probability of heart disease. As an individual's AGE increases by a year, the log odds of HD increases by 0.06. If the individual is MALE, his log odds of HD are higher than a FEMALE's by 0.91. A one unit increase in SBP is associated with a 0.016 increase in logg odds ratio of HD, a one unit increase in CHOL is associated with a 0.004 increase in logg odds ratio of HD, a one unit increase in FRW (Framingham relative weight) is associated with a 0.006 unit increase in log odds ratio for HD and finally, a one unit increase in cigarette smoking is associated with a 0.012 unit increase in log odds ratio for HD.
+
+These 6 factors are considered important, because they ensure that the predicted probability for Heart Disease for each individual corresponds as closely as possible to the indicidual's observed HD status. In other words, the coefficients on the intercept and these variables are such that plugging these estimates into the model for p(HD) = (e^(β0+β1X)) / (1 + e^(β0+β1X)), yields a number close to 1 for all individuals with heart disease and a number close to 0 for all individuals who did not. 
+
+
+### Part 1C
+Liz is a patient with the following readings: `AGE=50, GENDER=FEMALE, SBP=110, DBP=80, CHOL=180, FRW=105, CIG=0`. What is the probability that she will have heart disease, according to our final model?
+```{r, include = F}
+hd_data.new$HD <- NA 
+hd_data.new$AGE <- 50 
+hd_data.new$SEX <- "FEMALE"
+hd_data.new$SBP <- 110
+hd_data.new$DBP <- 80
+hd_data.new$CHOL <- 180
+hd_data.new$FRW <- 105 
+hd_data.new$CIG <- 0 
+
+hd_data.f <- rbind(hd_data.f, hd_data.new)
+tail(hd_data.f)
+```
+
+```{r}
+fit3.predict <- predict(fit3, hd_data.new, type="response")
+fit3.predict
+```
+Liz will have Heart disease with a probability of 0.05 according to our model. 
+
+### Part 2
+Classification analysis
+```{r, include = F}
+library(pROC)
+```
+
+a. Display the ROC curve using `fit1`. Explain what ROC reports and how to use the graph. Specify the classifier such that the False Positive rate is less than .1 and the True Positive rate is as high as possible.
+```{r, include = F}
+hd_data.f <- hd_data.f[-1394,]  # take out the last row 
+hd_data.f <- na.omit(hd_data)
+summary(fit1)
+fit1.roc <- roc(hd_data.f$HD, fit1$fitted, plot=T, col="blue")  
+plot(1-fit1.roc$specificities, fit1.roc$sensitivities, col="red", pch=16,
+     xlab="False Positive", 
+     ylab="Sensitivity")
+### False Positive = P( Classified as Positive| Negative)
+#### Given a False positive rate, locate the prob threshold
+plot(1-fit1.roc$specificities, fit1.roc$thresholds, col="green", pch=16,  
+     xlab="False Positive",
+     ylab="Threshold on prob")
+abline(v=0.1)
+```
+
+The ROC curve here plots Sensitivity (True positive rate) vs. Specificity (True Negative rate). The x axis can be thought of as the False Positive rate with values going from 0 to 1. (FP = 1-specificity). The classifier for which the FP rate is restricted to less than 0.1 is 0.3. This means that if our probability for HD given SBP exceeds 0.3, we will label that individual as 1 for HD. 
+
+hat Y=1 if p(y=1|x) > 0.3
+
+b. Overlay two ROC curves: one from `fit1`, the other from `fit2`. Does one curve always contain the other curve? Is the AUC of one curve always larger than the AUC of the other one? Why or why not?
+```{r, echo = F}
+fit2.roc <- roc(hd_data.f$HD, fit2$fitted, plot=T, col="blue")
+plot(1-fit1.roc$specificities, fit1.roc$sensitivities, col="red", pch=16, cex=.7, 
+     xlab="False Positive", 
+     ylab="Sensitivity")
+points(1-fit2.roc$specificities, fit2.roc$sensitivities, col="blue", pch=16, cex=.6,
+      xlab="False Positive", 
+      ylab="Sensitivity")
+title("Blue line is for fit2, and red for fit1")
+auc(fit1.roc)  #.636
+auc(fit2.roc)  #.680
+```
+It is not necessary that the new ROC curve will lie above the old one, or that AUC will always increase. This is because we are applying our model to a test set, rather than the training set. Adding more variables does not necessarily yield a better model. 
+
+AUC(fit1.roc) = .636 and AUC(fit2.roc) = 0.680
+
+c. Estimate the Positive Prediction Values and Negative Prediction Values for `fit1` and `fit2` using .5 as a threshold. Which model is more desirable if we prioritize the Positive Prediction values?
+```{r, include = F}
+fit1.pred.50 <- rep("0", 1393)   # prediction step 1
+fit1.pred.50[fit1$fitted > 1/2] <- "1"  # prediction step 2 to get a classifier
+fit1.pred.50 <- as.factor(fit1.pred.50)
+
+set.seed(1) # be able to reproduce the following result.
+data.frame(hd_data.f$HD, fit1.pred.50, fit1$fitt)[sample(1393, 10),]  #truth, y hat, probability all put together 
+# put observed y and predicted y's together, randomly take 10 subjects
+# confusion matrix: a 2 by 2 table 
+cm.5 <- table(fit1.pred.50, hd_data.f$HD) # confusion matrix: 
+cm.5
+positive.pred1 <- cm.5[2, 2] / (cm.5[2, 1] + cm.5[2, 2])
+positive.pred1
+
+negative.pred1 <- cm.5[1, 1] / (cm.5[1, 1] + cm.5[1, 2])
+negative.pred1
+
+fit2.pred.50 <- rep("0", 1393)   # prediction step 1
+fit2.pred.50[fit2$fitted > 1/2] <- "1"  # prediction step 2 to get a classifier
+fit2.pred.50 <- as.factor(fit2.pred.50)
+
+set.seed(1) # be able to reproduce the following result.
+data.frame(hd_data.f$HD, fit2.pred.50, fit2$fitt)[sample(1393, 10),]   
+
+cm.5.2 <- table(fit2.pred.50, hd_data.f$HD) # confusion matrix: 
+cm.5.2
+positive.pred2 <- cm.5.2[2, 2] / (cm.5.2[2, 1] + cm.5.2[2, 2])
+positive.pred2
+
+negative.pred2 <- cm.5.2[1, 1] / (cm.5.2[1, 1] + cm.5.2[1, 2])
+negative.pred2
+```
+Fit 1: positive prediction = 0.45, negative prediction = 0.783. 
+Fit 2: positive prediction = 0.47, negative prediction = 0.786. Fit2 is slightly more desireable since it has a higher positive prediction value  
+
+### Part 3
+Bayes rules with risk ratio a10/a01=10 or a10/a01=1. Use your final model obtained from 1 B) to build a class of linear classifiers.
+
+a. Write down the linear boundary for the Bayes classifier if the risk ratio of $a_{10}/a_{01}=10$.
+```{r, include = F}
+# Let a_{1,0}=L(Y=1, hat Y=0), the loss (cost) of making a "1" to a "0"
+# Let a_{0,1}=L(Y=0, hat Y=1), the loss of making a "0" to a "1"
+# prob(Y=1|x) > .1/(1+.1) = 0.09
+# logit > log(.09/.91) = -1.0047
+fit6 <- glm(HD ~ AGE + SEX + SBP + CHOL + FRW + CIG, hd_data.f, family = binomial)
+summary(fit6)
+# logit=-9.227 + 0.0615AGE + 0.9113SEXMALE + 0.0159SBP+ 0.0045CHOL + 0.006FRW + 0.0123CIG = -1.0047
+# The Bayes linear boundary is -9.227 + 0.0615AGE + 0.9113SEXMALE + 0.0159SBP+ 0.0045CHOL + 0.006FRW + 0.0123CIG = -1.0047
+```
+The Bayes linear boundary is -9.227 + 0.0615AGE + 0.9113SEXMALE + 0.0159SBP+ 0.0045CHOL + 0.006FRW + 0.0123CIG = -1.0047
+
+b. What is your estimated weighted misclassification error for this given risk ratio?
+```{r}
+fit6.pred.bayes=rep("0", 1393)
+fit6.pred.bayes[fit6$fitted > .09]="1" 
+MCE.bayes=(sum(5*(fit6.pred.bayes[hd_data.f$HD == "1"] != "1")) 
+           + sum(fit6.pred.bayes[hd_data.f$HD == "0"] != "0"))/length(hd_data.f$HD)
+MCE.bayes
+```
+MCE.bayes = 0.684
+
+c. Recall Liz, our patient from part 1. How would you classify her under this classifier?
+
+Liz would be classified as not having HD, since her p(HD) = 0.05 < 0.09. 
+
+Now, draw two estimated curves where x = posterior threshold, and y = misclassification errors, corresponding to the thresholding rule given in x-axis.
+```{r}
+
+```
+
+d. Use weighted misclassification error, and set $a_{10}/a_{01}=10$. How well does the Bayes rule classifier perform? 
+e. Use weighted misclassification error, and set $a_{10}/a_{01}=1$. How well does the Bayes rule classifier perform? 
+
+## Problem 2
+
+##1.Goal
+
+The goal of this study is to determine the factors that are important in predicting whether or not a bill gets passed through the Pennsylvania legislature. We examine about 8000 bills proposed since 2009, with the goal of building a classifier which has decent power to forecast which bills are likely to be passed. We have information regarding the session in which the bill was introduced, the spondoring party, number of cosponsors (split among republicans and democrats), the word count of the bill's title, the originating committee, day of the week the bill was introduced, number of amendments it went through, whether the sponsor is in leadership, how many of the sponsors sit on the committee to which the bill is referred (split among democrats and republicans). In this report I will choose a best set of classifiers such that: 
+
+* The testing ROC curve pushes to the upper left corner the most, and has a competitive AUC value.
+* Propose a reasonable loss function, and report the Bayes rule together with its weighted MIC. 
+* You may also create some sensible variables based on the predictors or make other transformations to improve the performance of your classifier.
+
+```{r, include = F}
+databills <- read.csv("Bills.subset.csv") #7011 variables 
+databills <- databills[!(databills$sponsor_party ==""), ] 
+databills <- databills[!(databills$status ==""), ] 
+databills  <- databills[!(databills$originating_committee ==""), ] #6647 variables after removing missing values
+databills$is_sponsor_in_leadership <- as.factor(databills$is_sponsor_in_leadership) 
+#converting status to binary
+databills$newstatus <- NA
+databills$newstatus[databills$status == "governor:signed"] <- "1"
+databills$newstatus[databills$status == "bill:passed"] <- "1"
+databills$newstatus[databills$status == "governor:received"] <- "1"
+databills$newstatus[is.na(databills$newstatus)] <- "0"
+databills$status <- databills$newstatus
+databills$status <- as.integer(databills$status)
+databills$newstatus <- NULL 
+
+summary(databills)
+par(mfrow=c(1,1))
+
+names1 <- c("Number of democratic cosponsors", "Number of Republican cosponsors")
+names2 <- c("Number of bill cosponsors", "Number of originating committee cosponsors")
+boxplot(databills$num_d_cosponsors, databills$num_r_cosponsors, outline = FALSE, names = names1)
+boxplot(databills$num_cosponsors, databills$num_originating_committee_cosponsors, outline = FALSE, names = names2)
+
+```
+##2. Summary
+Preliminary summary of the data: 
+Sponsoring Party: About an equal split, with 46% of the bills coming from Democrats and 54% from Republicans. 
+Num cosponsors: Between 0 and 165 with a mean of 23. 
+Democrat cosponsors: Between 0 and 90 with mean of 10.3. 
+Republican cosponsors: Between 0 and 99 with mean of 13. 
+Word count of the title: Between 6 and 751, mean of 34. 
+Number of amendments: Between 0 and 8, mean of 0.18. 
+% of sponsors in leadership: 62% 
+
+##3. Building the classifier
+
+###Model building
+Start with all variables. Our goal is to fit a well-fitting model, that is still small and easy to interpret (parsimonious).
+
+i. Use backward selection method. Only keep variables whose coefficients are significantly different from 0 at .05 level. 
+```{r, include = F}
+#Full model 
+fit0 <- glm(status ~ sponsor_party + session + num_cosponsors + num_r_cosponsors + title_word_count + day.of.week.introduced + num_amendments + is_sponsor_in_leadership + num_originating_committee_cosponsors + num_originating_committee_cosponsors_r, data = databills, family = binomial) #removed variables that would cause collinarity
+summary(fit0)
+
+fit0.1 <- update(fit0, .~. -num_r_cosponsors)
+summary(fit0.1)
+fit0.2 <- update(fit0.1, .~. -num_originating_committee_cosponsors_r)
+summary(fit0.2)
+fit0.3 <- update(fit0.2, .~. -num_cosponsors)
+summary(fit0.3)
+fit0.4 <- update(fit0.3, .~. -day.of.week.introduced)
+summary(fit0.4)
+fit0.5 <- update(fit0.4, .~. -is_sponsor_in_leadership)
+summary(fit0.5)
+fit0.6 <- update(fit0.5, .~. -num_originating_committee_cosponsors)
+```
+After kicking out num_r_cosponsors, num_originating_committee_cosponsors_r, num_cosponsors, day.of.week.introduced, is_sponsor_in_leadership, num_originating_committee_cosponsor: 
+
+Final model: status ~ sponsor_party + session + title_word_count + num_amendments 
+```{r}
+summary(fit0.6)
+```
+
+Can also use AIC as the criterion for model selection. Find a model with small AIC through exhaustive search (chunk not evaluated here)  
+```{r, eval = F, include = F}
+databills_AIC <- data.frame(databills$status, databills$sponsor_party, databills$session, databills$num_cosponsors, databills$num_r_cosponsors, databills$title_word_count, databills$day.of.week.introduced, databills$num_amendments, databills$is_sponsor_in_leadership, databills$num_originating_committee_cosponsors, databills$num_originating_committee_cosponsors_r)
+
+Xy <- model.matrix(databills.status ~.+0, databills_AIC) # get the design matrix without 1's and status.
+Xy <- data.frame(Xy, databills_AIC$databills.status)   # attach y as the last column.
+str(Xy)
+require(bestglm)
+fit.all <- bestglm(Xy, family = binomial, method = "exhaustive", IC="AIC", nvmax = 10)
+names(fit.all)
+fit.all$BestModels
+summary(fit.all$BestModel)
+```
+
+###Classification analysis
+```{r, include = F}
+library(pROC)
+```
+
+ROC curve using `fit0.6`: 
+```{r, echo = F}
+fit0.6.roc <- roc(databills$status, fit0.6$fitted, plot=T, col="blue")  
+plot(1-fit0.6.roc$specificities, fit0.6.roc$sensitivities, col="red", pch=16,
+     xlab="False Positive", 
+     ylab="Sensitivity")
+### False Positive = P( Classified as Positive| Negative)
+#### Given a False positive rate, locate the prob threshold
+plot(1-fit0.6.roc$specificities, fit0.6.roc$thresholds, col="green", pch=16,  
+     xlab="False Positive",
+     ylab="Threshold on prob")
+abline(v=0.05)
+auc(fit0.6.roc)
+```
+I chose to specify the classifier such that the False Positive rate is less than 0.05 and the True Positive rate is as high as possible. Area under the curve: 0.8363. 
+
+###Positive and Negative prediction values 
+
+I will estimate the Positive Prediction Values and Negative Prediction Values for `fit0.6` and  using .33 as a threshold, since this is approximately the threshold that corresponds to a FP rate of no more than 0.05. 
+```{r, include = F}
+fit0.6.pred.50 <- rep("0", 6647)   # prediction step 1
+fit0.6.pred.50[fit0.6$fitted > 1/3] <- "1"  # prediction step 2 to get a classifier
+fit0.6.pred.50 <- as.factor(fit0.6.pred.50)
+
+set.seed(1) # be able to reproduce the following result.
+data.frame(databills$status, fit0.6.pred.50, fit0.6$fitt)[sample(6647, 100),]  #truth, y hat, probability all put together 
+# put observed y and predicted y's together, randomly take 100 subjects
+# confusion matrix: a 2 by 2 table 
+cm.5 <- table(fit0.6.pred.50, databills$status) # confusion matrix: 
+cm.5
+positive.pred1 <- cm.5[2, 2] / (cm.5[2, 1] + cm.5[2, 2])
+positive.pred1
+
+negative.pred1 <- cm.5[1, 1] / (cm.5[1, 1] + cm.5[1, 2])
+negative.pred1
+```
+Fit 0.6: positive prediction = 0.63, negative prediction = 0.95. 
+
+Bayes rules with risk ratio a10/a01=10 or a10/a01=1. Use your final model obtained from 1 B) to build a class of linear classifiers.
+
+### Loss function
+Let the risk ratio of $a_{10}/a_{01}=10$.
+```{r, include = F}
+# Let a_{1,0}=L(Y=1, hat Y=0), the loss (cost) of making a "1" to a "0"
+# Let a_{0,1}=L(Y=0, hat Y=1), the loss of making a "0" to a "1"
+# prob(Y=1|x) > .1/(1+.1) = 0.09
+# logit > log(.09/.91) = -1.0047
+fit0.6 <- glm(status ~ sponsor_party + session + title_word_count + num_amendments, data = databills, family = binomial)
+summary(fit0.6)
+# logit=-4.269 + 0.7267sponsor_party + 0.42session2011-2012 + 0.415session2013-2014 + 0.0047title_word_count + 1.785num_amendments = -1.0047
+# The Bayes linear boundary is -4.269 + 0.7267sponsor_party + 0.42session2011-2012 + 0.415session2013-2014 + 0.0047title_word_count + 1.785num_amendments = -1.0047
+```
+The Bayes linear boundary is -4.269 + 0.7267sponsor_party + 0.42session2011-2012 + 0.415session2013-2014 + 0.0047title_word_count + 1.785num_amendments = -1.0047
+
+###MCE
+What is your estimated weighted misclassification error for this given risk ratio?
+```{r}
+fit0.6.pred.bayes=rep("0", 6647)
+fit0.6.pred.bayes[fit0.6$fitted > .09]="1" 
+MCE.bayes=(sum(5*(fit0.6.pred.bayes[databills$status == "1"] != "1")) 
+           + sum(fit0.6.pred.bayes[databills$status == "0"] != "0"))/length(databills$status)
+MCE.bayes
+```
+Weighted MCE = 0.222. 
+
+*Final notes*: The data is graciously lent from a friend. It is only meant for you to use in this class. All other uses are prohibited without permission. 
+
